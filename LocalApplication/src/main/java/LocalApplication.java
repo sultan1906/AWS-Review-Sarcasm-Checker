@@ -1,7 +1,6 @@
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.services.s3.model.*;
 import software.amazon.awssdk.services.sqs.model.*;
-import software.amazon.awssdk.services.s3.model.S3Exception;
 
 import java.io.*;
 import java.util.*;
@@ -103,15 +102,19 @@ public class LocalApplication {
                 breakTheLoop = true;
             } else {
                 try {
-                    Thread.sleep(20000); // Sleep for 30 seconds
+                    Thread.sleep(20000);
                 } catch (InterruptedException e) {
                     System.out.println("[ERROR] " + e.getMessage());
                 }
             }
         }
+        handleMessages(messages, localSQSURL);
+    }
+
+    private static void handleMessages(List<software.amazon.awssdk.services.sqs.model.Message> messages, String localSQSURL) {
         for (Message message : messages) {
             String fileName = message.body();
-            processFiles(fileName);
+            processFile(fileName);
             System.out.println("OutputFile created");
             DeleteMessageRequest deleteRequest = DeleteMessageRequest.builder()
                     .queueUrl(localSQSURL)
@@ -121,56 +124,15 @@ public class LocalApplication {
         }
     }
 
-    private static void processFiles(String fileName) {
-        String outputFile = "output.html";
+
+    private static void processFile(String fileName) {
         try {
             GetObjectRequest getObjectRequest = GetObjectRequest.builder()
                     .bucket(aws.answersBucket)
                     .key(fileName)
                     .build();
             ResponseInputStream<GetObjectResponse> s3Object = aws.s3.getObject(getObjectRequest);
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(s3Object))) {
-                BufferedWriter writerToHtml = new BufferedWriter(new FileWriter(outputFile));
-                writerToHtml.write("<html><head><title>Review Analysis</title></head><body> <h1>Review Analysis</h1>");
-                // Process each line
-                String line;
-                String sentimentColor = "";
-                String link = "";
-                String entities = "";
-                String sarcasm;
-                while ((line = reader.readLine()) != null) {
-                    if (line.trim().isEmpty()) {
-                        // Empty line, add it to the HTML file
-                        writerToHtml.write("<br/>");
-                    } else {
-                        String substring = line.substring(line.indexOf(":") + 2);
-                        if (line.startsWith("Sentiment:")) {
-                            int sentiment = Integer.parseInt(substring.trim());
-                            sentimentColor = getColor(sentiment);
-                        } else if (line.startsWith("Link:")) {
-                            link = substring.trim();
-                        } else if (line.startsWith("Entities:")) {
-                            entities = line.substring(line.indexOf("[")).trim();
-                        } else if (line.startsWith("Sarcasm:")) {
-                            sarcasm = substring.trim();
-                            // Generate HTML content for this review
-                            writerToHtml.write("<div>");
-                            writerToHtml.write("<p>Link: <a href=\"" + link + "\" style=\"color:" + sentimentColor + "\">" + link + "</a></p>");
-                            writerToHtml.write("<p>Entities: " + entities.replace(", ", ",") + "</p>");
-                            writerToHtml.write("<p>Sarcasm: " + sarcasm + "</p>");
-                            writerToHtml.write("</div>");
-                            sentimentColor = "";
-                            link = "";
-                            entities = "";
-                        }
-                    }
-                }
-                writerToHtml.write("</body></html>");
-                writerToHtml.close();
-                System.out.println("HTML file generated successfully!");
-            } catch (IOException e) {
-                System.out.println("[Debugger log] Failed to read lines from the file, error message:" + e.getMessage());
-            }
+            createHTMLFile(s3Object, aws.outputFile);
         } catch (Exception e) {
             System.out.println("[Debugger log] Failed to open the file answer from s3, error message: " + e.getMessage());
         }
@@ -190,21 +152,50 @@ public class LocalApplication {
         }
     }
 
-    private static void deleteBucketAndObjects(String bucketName, boolean deleteBucket) {
-        aws.s3.listObjectsV2Paginator(builder -> builder.bucket(bucketName))
-                .stream()
-                .flatMap(r -> r.contents().stream())
-                .forEach(object -> {
-                    aws.s3.deleteObject(builder -> builder.bucket(bucketName).key(object.key()));
-                });
-        try {
-            if (deleteBucket) {
-                aws.s3.deleteBucket(builder -> builder.bucket(bucketName).build());
-                System.out.println("successfully deleted local application bucket");
+    public static void createHTMLFile(ResponseInputStream<GetObjectResponse> s3Object, String outputFile){
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(s3Object))) {
+            BufferedWriter writerToHtml = new BufferedWriter(new FileWriter(outputFile));
+            writerToHtml.write("<html><head><title>Review Analysis</title></head><body> <h1>Review Analysis</h1>");
+            // Process each line
+            String line;
+            String sentimentColor = "";
+            String link = "";
+            String entities = "";
+            String sarcasm;
+            while ((line = reader.readLine()) != null) {
+                if (line.trim().isEmpty()) {
+                    // Empty line, add it to the HTML file
+                    writerToHtml.write("<br/>");
+                } else {
+                    String substring = line.substring(line.indexOf(":") + 2);
+                    if (line.startsWith("Sentiment:")) {
+                        int sentiment = Integer.parseInt(substring.trim());
+                        sentimentColor = getColor(sentiment);
+                    } else if (line.startsWith("Link:")) {
+                        link = substring.trim();
+                    } else if (line.startsWith("Entities:")) {
+                        entities = line.substring(line.indexOf("[")).trim();
+                    } else if (line.startsWith("Sarcasm:")) {
+                        sarcasm = substring.trim();
+                        // Generate HTML content for this review
+                        writerToHtml.write(
+                                "<div>" +
+                                        "<p>Link: <a href=\"" + link + "\" style=\"color:" + sentimentColor + "\">" + link + "</a></p>" +
+                                        "<p>Entities: " + entities.replace(", ", ",") + "</p>" +
+                                        "<p>Sarcasm: " + sarcasm + "</p>" +
+                                        "</div>"
+                        );
+                        sentimentColor = "";
+                        link = "";
+                        entities = "";
+                    }
+                }
             }
-        } catch (S3Exception e) {
-            System.out.println("Failed to delete local application sbucketqs");
-            System.err.println("Error deleting bucket: " + e.getMessage());
+            writerToHtml.write("</body></html>");
+            writerToHtml.close();
+            System.out.println("HTML file generated successfully!");
+        } catch (IOException e) {
+            System.out.println("[Debugger log] Failed to read lines from the file, error message:" + e.getMessage());
         }
     }
 }
