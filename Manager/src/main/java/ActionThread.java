@@ -67,7 +67,7 @@ public class ActionThread implements Runnable {
                 } catch (Exception e) {
                     continue;
                 }
-                if (terminate.length() > 0){
+                if (!terminate.isEmpty()){
                     awsManager.terminate.set(true);
                 }
                 awsManager.deleteMessageFromGlobalSqs(globalSQSURL, message);

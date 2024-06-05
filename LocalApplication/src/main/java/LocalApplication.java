@@ -91,7 +91,7 @@ public class LocalApplication {
     }
 
     private static void receiveMassagesFromSQS(String localSQSURL) {
-        List<Message> messages = new ArrayList<>();
+        List<software.amazon.awssdk.services.sqs.model.Message> messages = new ArrayList<>();
         boolean breakTheLoop = false;
         while (!breakTheLoop) {
             ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
