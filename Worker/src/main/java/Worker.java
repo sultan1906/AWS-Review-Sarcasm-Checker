@@ -58,14 +58,7 @@ public class Worker {
                     String entities = processEntitiesReview(message.body());
                     String sarcasm = processSarcasmReview(parseInt(rating), sentiment);
 
-                    StringBuilder stringBuilder = new StringBuilder();
-                    stringBuilder.append("Sentiment: ").append(sentiment).append("\n");
-                    stringBuilder.append("Link: ").append(link).append("\n");
-                    stringBuilder.append("Entities: ").append(entities).append("\n");
-                    stringBuilder.append("Sarcasm: ").append(sarcasm);
-                    stringBuilder.append("\n");
-                    stringBuilder.append("\n");
-                    String response = stringBuilder.toString();
+                    String response = buildString(sentiment, link, entities, sarcasm).toString();
 
                     awsWorker.SendToManagerSQS(MassagesReceiver, sqsLocalUrl, response);
 
@@ -105,6 +98,18 @@ public class Worker {
             }, 100, 10 * 1000);
         });
         timerThread.start();
+    }
+
+    public static StringBuilder buildString(int sentiment, String link, String entities, String sarcasm){
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append("Sentiment: ").append(sentiment).append("\n");
+        stringBuilder.append("Link: ").append(link).append("\n");
+        stringBuilder.append("Entities: ").append(entities).append("\n");
+        stringBuilder.append("Sarcasm: ").append(sarcasm);
+        stringBuilder.append("\n");
+        stringBuilder.append("\n");
+
+        return stringBuilder;
     }
 }
 
