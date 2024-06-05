@@ -82,6 +82,13 @@ public class Worker {
         return rating != sentiment ?  "Sarcasm" : "No Sarcasm";
     }
 
+    /**
+     * Dynamically adjusts the visibility timeout of a message in an SQS queue.
+     *
+     * @param message       The message whose visibility timeout needs adjustment.
+     * @param workerQueueUrl The URL of the SQS queue where the message resides.
+     * @param finishedWork  A flag indicating whether the processing of the message has finished.
+     */
     private static void makeMessageVisibilityDynamic(Message message, String workerQueueUrl, AtomicBoolean finishedWork) {
         String receiptHandle = message.receiptHandle();
         Thread timerThread = new Thread(() -> {
