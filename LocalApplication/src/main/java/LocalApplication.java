@@ -25,6 +25,7 @@ public class LocalApplication {
         String LocalSQSURL = aws.createLocalSQS(QUEUE_NAME);
 
         aws.createBucketIfNotExists(aws.jarsBucket);
+
         uploadJarsToBucket();
 
         aws.createManagerIfNotExists();
@@ -42,8 +43,7 @@ public class LocalApplication {
 
     private static void extractArguments(String[] args) {
         if (args.length < 3) {
-            System.out.println("[ERROR] Missing command line arguments.");
-            System.exit(1);
+            logErrorAndExit("Missing command line arguments.");
         }
         int i = 0;
         while (i < args.length && args[i].startsWith("input")){
@@ -52,16 +52,18 @@ public class LocalApplication {
         }
         //If there is no output file name and n
         if (i > args.length -2){
-            System.out.println("Command line arguments are missing");
-            System.exit(1);
+            logErrorAndExit("Command line arguments are missing");
         }
-        aws.outputFile = args[i];
-        i++;
-        aws.n = args[i];
-        i++;
+        aws.outputFile = args[i++];
+        aws.n = args[i++];
         if (i == args.length -1){
             aws.terminate = args[i];
         }
+    }
+
+    private static void logErrorAndExit(String errorMessage) {
+        System.out.println("[ERROR] " + errorMessage);
+        System.exit(1);
     }
 
     private static void uploadInputFilesToBucket(String bucketName, List<String> files) {
@@ -91,24 +93,34 @@ public class LocalApplication {
 
     private static void receiveMassagesFromSQS(String localSQSURL) {
         List<software.amazon.awssdk.services.sqs.model.Message> messages = new ArrayList<>();
-        boolean breakTheLoop = false;
-        while (!breakTheLoop) {
-            ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
-                    .queueUrl(localSQSURL)
-                    .waitTimeSeconds(20)
-                    .build();
-            messages = aws.sqs.receiveMessage(receiveRequest).messages();
-            if (!messages.isEmpty()) {
-                breakTheLoop = true;
-            } else {
-                try {
-                    Thread.sleep(20000);
-                } catch (InterruptedException e) {
-                    System.out.println("[ERROR] " + e.getMessage());
-                }
+        boolean hasMessages = false;
+
+        while (!hasMessages) {
+            messages = receiveMessages(localSQSURL);
+            hasMessages = !messages.isEmpty();
+
+            if (!hasMessages) {
+                sleep(20000); // Sleep for 20 seconds
             }
         }
         handleMessages(messages, localSQSURL);
+    }
+
+    private static List<Message> receiveMessages(String queueUrl) {
+        ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
+                .queueUrl(queueUrl)
+                .waitTimeSeconds(20)
+                .build();
+
+        return aws.sqs.receiveMessage(receiveRequest).messages();
+    }
+
+    private static void sleep(int milliseconds) {
+        try {
+            Thread.sleep(milliseconds);
+        } catch (InterruptedException e) {
+            System.out.println("[ERROR] " + e.getMessage());
+        }
     }
 
     private static void handleMessages(List<software.amazon.awssdk.services.sqs.model.Message> messages, String localSQSURL) {
@@ -116,12 +128,16 @@ public class LocalApplication {
             String fileName = message.body();
             processFile(fileName);
             System.out.println("OutputFile created");
-            DeleteMessageRequest deleteRequest = DeleteMessageRequest.builder()
-                    .queueUrl(localSQSURL)
-                    .receiptHandle(message.receiptHandle())
-                    .build();
-            aws.sqs.deleteMessage(deleteRequest);
+            deleteMessageFromQueue(localSQSURL, message);
         }
+    }
+
+    private static void deleteMessageFromQueue(String queueUrl, Message message) {
+        DeleteMessageRequest deleteRequest = DeleteMessageRequest.builder()
+                .queueUrl(queueUrl)
+                .receiptHandle(message.receiptHandle())
+                .build();
+        aws.sqs.deleteMessage(deleteRequest);
     }
 
 
