@@ -14,20 +14,22 @@ public class ListeningThread implements Runnable{
         while (!awsManager.terminate.get()){
             List<Message> requests = awsManager.GlobalSQSMessages(globalSQSURL);
             if(requests.isEmpty()) {
-                try {
-                    Thread.sleep(2000);
-                } catch (InterruptedException e) {
-                }
+                sleep(2000);
             }
             else {
                 for (Message curr : requests) {
                     awsManager.QueueOfRequests.offer(curr);
                 }
             }
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-            }
+            sleep(100);
+        }
+    }
+
+    private static void sleep(int milliseconds) {
+        try {
+            Thread.sleep(milliseconds);
+        } catch (InterruptedException e) {
+            System.out.println("[ERROR] " + e.getMessage());
         }
     }
 }

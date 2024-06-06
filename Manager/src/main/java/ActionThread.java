@@ -29,53 +29,85 @@ public class ActionThread implements Runnable {
     public void run() {
         while (!awsManager.terminate.get()) {
             if (awsManager.QueueOfRequests.isEmpty()) {
-                try {
-                    Thread.sleep(2000);
-                } catch (InterruptedException e) {
-                    System.err.println("[ERROR] " + e.getMessage());
-                }
+                sleep(2000);
             } else {
                 Message message = awsManager.QueueOfRequests.poll();
-                String sqsLocalUrl = message.body();
-                Map<String, MessageAttributeValue> attributes = message.messageAttributes();
-                MessageAttributeValue bucketAttribute = attributes.get("Bucket");
-                MessageAttributeValue fileAttribute = attributes.get("File");
-                MessageAttributeValue nAttribute = attributes.get("n");
-                MessageAttributeValue terminateAttribute = attributes.get("Terminate");
-
-                String bucketName = (bucketAttribute != null) ? bucketAttribute.stringValue() : null;
-                String fileName = (fileAttribute != null) ? fileAttribute.stringValue() : null;
-                String n = (nAttribute != null) ? nAttribute.stringValue() : null;
-                String terminate = (terminateAttribute != null) ? terminateAttribute.stringValue() : null;
-
-                awsManager.MapOfReviews.put(sqsLocalUrl, 0);
-                int sumOfReviews = ProcessRequest(bucketName, fileName, sqsLocalUrl);
-
-                try {
-                    synchronized (awsManager.updateWorkersLock) {
-                        int numOfWorkers = awsManager.checkHowManyWorkersRunning();
-                        if (numOfWorkers < 8) {
-                            int num = sumOfReviews / parseInt(n);
-                            if (num <= 8 && num > numOfWorkers) {
-                                awsManager.createWorkers(num - numOfWorkers);
-                            }
-                            else if (num > 8){
-                                awsManager.createWorkers(8-numOfWorkers);
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    continue;
-                }
-                if (!terminate.isEmpty()){
-                    awsManager.terminate.set(true);
-                }
-                awsManager.deleteMessageFromGlobalSqs(globalSQSURL, message);
+                handleRequestMessage(message);
             }
         }
     }
 
-    private int ProcessRequest(String bucketName, String fileName, String sqsLocalUrl) {
+    /**
+     * Handles the processing of a single SQS request message.
+     *
+     * @param message The SQS message to be processed.
+     */
+    private void handleRequestMessage(Message message) {
+        String sqsLocalUrl = message.body();
+        Map<String, MessageAttributeValue> attributes = message.messageAttributes();
+
+        String bucketName = getAttribute(attributes, "Bucket");
+        String fileName = getAttribute(attributes, "File");
+        String n = getAttribute(attributes, "n");
+        String terminate = getAttribute(attributes, "Terminate");
+
+        awsManager.MapOfReviews.put(sqsLocalUrl, 0);
+        int sumOfReviews = processRequest(bucketName, fileName, sqsLocalUrl);
+
+        manageWorkerCreation(sumOfReviews, n);
+
+        if (terminate != null && !terminate.isEmpty()) {
+            awsManager.terminate.set(true);
+        }
+
+        awsManager.deleteMessageFromGlobalSqs(globalSQSURL, message);
+    }
+
+    private static void sleep(int milliseconds) {
+        try {
+            Thread.sleep(milliseconds);
+        } catch (InterruptedException e) {
+            System.out.println("[ERROR] " + e.getMessage());
+        }
+    }
+
+    /**
+     * Retrieves the value of a specified attribute from a message's attributes.
+     *
+     * @param attributes The map of message attributes.
+     * @param key        The key of the attribute to retrieve.
+     * @return The string value of the attribute, or null if the attribute is not found.
+     */
+    private String getAttribute(Map<String, MessageAttributeValue> attributes, String key) {
+        MessageAttributeValue attribute = attributes.get(key);
+        return (attribute != null) ? attribute.stringValue() : null;
+    }
+
+    /**
+     * Manages the creation of worker instances based on the number of reviews and the provided parameter.
+     *
+     * @param sumOfReviews The total number of reviews processed.
+     * @param n            The parameter to determine the number of workers to create.
+     */
+    private void manageWorkerCreation(int sumOfReviews, String n) {
+        try {
+            synchronized (awsManager.updateWorkersLock) {
+                int numOfWorkers = awsManager.checkHowManyWorkersRunning();
+                if (numOfWorkers < 8) {
+                    int num = sumOfReviews / parseInt(n);
+                    if (num <= 8 && num > numOfWorkers) {
+                        awsManager.createWorkers(num - numOfWorkers);
+                    } else if (num > 8) {
+                        awsManager.createWorkers(8 - numOfWorkers);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // Handle the exception if needed
+        }
+    }
+
+    private int processRequest(String bucketName, String fileName, String sqsLocalUrl) {
         int sumOfReviews = 0;
         try {
             GetObjectRequest getObjectRequest = GetObjectRequest.builder()
