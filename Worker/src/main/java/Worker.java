@@ -15,59 +15,62 @@ public class Worker {
 
     public static void main(String[] args) {
         String managerToWorker = awsWorker.CheckSQS(awsWorker.managerToWorkerSQS);
+        String messagesReceiver = awsWorker.CheckSQS(awsWorker.MassagesReceiverSOS);
 
-        String MassagesReceiver = awsWorker.CheckSQS(awsWorker.MassagesReceiverSOS);
+        boolean shouldTerminate = false;
 
-        while (true) {
+        while (!shouldTerminate) {
             List<Message> messages = awsWorker.GetFromManager(managerToWorker);
             if (messages.isEmpty()) {
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException e) {
-                    System.out.println("[ERROR] " + e.getMessage());
-                }
+                sleep(2000);
             } else {
-                for (Message message : messages) {
-                    AtomicBoolean finishedWork = new AtomicBoolean(false); // for visibility extend
-                    makeMessageVisibilityDynamic(message, MassagesReceiver, finishedWork);
-
-                    String link;
-                    String rating;
-                    String sqsLocalUrl;
-                    Map<String, MessageAttributeValue> attributes = message.messageAttributes();
-                    MessageAttributeValue linkAttribute = attributes.get("Link");
-                    MessageAttributeValue ratingAttribute = attributes.get("Rating");
-                    MessageAttributeValue sqsLocalUrlAttribute = attributes.get("SQSLocalUrl");
-                    link = (linkAttribute != null) ? linkAttribute.stringValue() : null;
-                    rating = (ratingAttribute != null) ? ratingAttribute.stringValue() : null;
-                    sqsLocalUrl = (sqsLocalUrlAttribute != null) ? sqsLocalUrlAttribute.stringValue() : null;
-
-                    if (message.body().equals("terminate!")){
-                        awsWorker.deleteMessageFromManagerToWorkerSQS(managerToWorker, message);
-                        finishedWork.set(true);
-                        try {
-                            Thread.sleep(10000);
-                        } catch (InterruptedException e) {
-                            System.out.println("[ERROR] " + e.getMessage());
-                        }
-                        awsWorker.shutdownInstance();
-                        return;
-                    }
-
-                    int sentiment = processSentimentReview(message.body());
-                    String entities = processEntitiesReview(message.body());
-                    String sarcasm = processSarcasmReview(parseInt(rating), sentiment);
-
-                    String response = buildString(sentiment, link, entities, sarcasm).toString();
-
-                    awsWorker.SendToManagerSQS(MassagesReceiver, sqsLocalUrl, response);
-
-                    awsWorker.deleteMessageFromManagerToWorkerSQS(managerToWorker, message);
-
-                    finishedWork.set(true);
-                }
+                shouldTerminate = processMessages(messages, managerToWorker, messagesReceiver);
             }
         }
+    }
+
+    private static boolean  processMessages(List<Message> messages, String managerToWorker, String messagesReceiver) {
+        for (Message message : messages) {
+            AtomicBoolean finishedWork = new AtomicBoolean(false); // for visibility extend
+            makeMessageVisibilityDynamic(message, messagesReceiver, finishedWork);
+
+            Map<String, MessageAttributeValue> attributes = message.messageAttributes();
+            String link = getMessageAttributeValue(attributes, "Link");
+            String rating = getMessageAttributeValue(attributes, "Rating");
+            String sqsLocalUrl = getMessageAttributeValue(attributes, "SQSLocalUrl");
+
+            if (message.body().equals("terminate!")) {
+                handleTerminateMessage(managerToWorker, message, finishedWork);
+                return true;
+            }
+
+            processMessage(message, link, rating, sqsLocalUrl, messagesReceiver, managerToWorker);
+
+            finishedWork.set(true);
+        }
+        return false;
+    }
+
+    private static void handleTerminateMessage(String managerToWorker, Message message, AtomicBoolean finishedWork) {
+        awsWorker.deleteMessageFromManagerToWorkerSQS(managerToWorker, message);
+        finishedWork.set(true);
+        sleep(10000);
+        awsWorker.shutdownInstance();
+    }
+
+    private static void processMessage(Message message, String link, String rating, String sqsLocalUrl, String messagesReceiver, String managerToWorker) {
+        int sentiment = processSentimentReview(message.body());
+        String entities = processEntitiesReview(message.body());
+        String sarcasm = processSarcasmReview(parseInt(rating), sentiment);
+
+        String response = buildString(sentiment, link, entities, sarcasm).toString();
+        awsWorker.SendToManagerSQS(messagesReceiver, sqsLocalUrl, response);
+        awsWorker.deleteMessageFromManagerToWorkerSQS(managerToWorker, message);
+    }
+
+    private static String getMessageAttributeValue(Map<String, MessageAttributeValue> attributes, String key) {
+        MessageAttributeValue attribute = attributes.get(key);
+        return (attribute != null) ? attribute.stringValue() : null;
     }
 
     private static int processSentimentReview(String review) {
@@ -80,6 +83,14 @@ public class Worker {
 
     private static String processSarcasmReview(int rating, int sentiment) {
         return rating != sentiment ?  "Sarcasm" : "No Sarcasm";
+    }
+
+    private static void sleep(int milliseconds) {
+        try {
+            Thread.sleep(milliseconds);
+        } catch (InterruptedException e) {
+            System.out.println("[ERROR] " + e.getMessage());
+        }
     }
 
     /**
