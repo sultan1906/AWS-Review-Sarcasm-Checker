@@ -29,6 +29,14 @@ public class Worker {
         }
     }
 
+    /**
+     * Processes the messages received from the SQS queue.
+     *
+     * @param messages List of messages received from the SQS queue.
+     * @param managerToWorker The SQS URL for the manager to worker communication.
+     * @param messagesReceiver The SQS URL for receiving processed messages.
+     * @return true if a terminate message is received, false otherwise.
+     */
     private static boolean  processMessages(List<Message> messages, String managerToWorker, String messagesReceiver) {
         for (Message message : messages) {
             AtomicBoolean finishedWork = new AtomicBoolean(false); // for visibility extend
@@ -51,6 +59,13 @@ public class Worker {
         return false;
     }
 
+    /**
+     * Handles the terminate message and shuts down the instance.
+     *
+     * @param managerToWorker The SQS URL for the manager to worker communication.
+     * @param message The terminate message.
+     * @param finishedWork The flag indicating whether the work is finished.
+     */
     private static void handleTerminateMessage(String managerToWorker, Message message, AtomicBoolean finishedWork) {
         awsWorker.deleteMessageFromManagerToWorkerSQS(managerToWorker, message);
         finishedWork.set(true);
@@ -58,6 +73,16 @@ public class Worker {
         awsWorker.shutdownInstance();
     }
 
+    /**
+     * Processes an individual message by analyzing its content.
+     *
+     * @param message The message to process.
+     * @param link The link associated with the message.
+     * @param rating The rating associated with the message.
+     * @param sqsLocalUrl The SQS local URL.
+     * @param messagesReceiver The SQS URL for receiving processed messages.
+     * @param managerToWorker The SQS URL for the manager to worker communication.
+     */
     private static void processMessage(Message message, String link, String rating, String sqsLocalUrl, String messagesReceiver, String managerToWorker) {
         int sentiment = processSentimentReview(message.body());
         String entities = processEntitiesReview(message.body());
@@ -118,6 +143,15 @@ public class Worker {
         timerThread.start();
     }
 
+    /**
+     * Builds a response string from the given parameters.
+     *
+     * @param sentiment The sentiment score.
+     * @param link The link associated with the review.
+     * @param entities The extracted entities.
+     * @param sarcasm The sarcasm status.
+     * @return The response string.
+     */
     public static StringBuilder buildString(int sentiment, String link, String entities, String sarcasm){
         StringBuilder stringBuilder = new StringBuilder();
         stringBuilder.append("Sentiment: ").append(sentiment).append("\n");

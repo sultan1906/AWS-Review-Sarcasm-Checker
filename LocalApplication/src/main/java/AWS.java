@@ -217,9 +217,7 @@ public class AWS {
         s3.listObjectsV2Paginator(builder -> builder.bucket(bucketName))
                 .stream()
                 .flatMap(r -> r.contents().stream())
-                .forEach(object -> {
-                    s3.deleteObject(builder -> builder.bucket(bucketName).key(object.key()));
-                });
+                .forEach(object -> s3.deleteObject(builder -> builder.bucket(bucketName).key(object.key())));
         try {
             if (deleteBucket) {
                 s3.deleteBucket(builder -> builder.bucket(bucketName).build());
@@ -229,5 +227,13 @@ public class AWS {
             System.out.println("Failed to delete local application sbucketqs");
             System.err.println("Error deleting bucket: " + e.getMessage());
         }
+    }
+
+    public void deleteMessageFromQueue(String queueUrl, Message message) {
+        DeleteMessageRequest deleteRequest = DeleteMessageRequest.builder()
+                .queueUrl(queueUrl)
+                .receiptHandle(message.receiptHandle())
+                .build();
+        sqs.deleteMessage(deleteRequest);
     }
 }

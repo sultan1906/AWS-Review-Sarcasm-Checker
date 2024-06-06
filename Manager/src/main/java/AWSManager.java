@@ -1,4 +1,5 @@
 import com.amazonaws.util.EC2MetadataUtils;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.services.ec2.model.*;
@@ -9,6 +10,8 @@ import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.*;
 import software.amazon.awssdk.utils.Pair;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -46,7 +49,6 @@ public class AWSManager {
 
     public AtomicInteger WorkersCounter;
 
-    public String managerTag = "ManagerJar.jar";
     public String workerTag = "WorkerJar.jar";
 
     public String ami = "ami-00e95a9222311e8ed";
@@ -206,8 +208,7 @@ public class AWSManager {
                 .messageAttributeNames("All")
                 .maxNumberOfMessages(1)
                 .build();
-        List<Message> messages = sqs.receiveMessage(receiveRequest).messages();
-        return messages;
+        return sqs.receiveMessage(receiveRequest).messages();
     }
 
     public void SendToManagerToWorkerSQS(String localSQSUrl, String sqsManagerToWorker,
@@ -259,5 +260,31 @@ public class AWSManager {
         } while (nextToken != null);
 
         return counter;
+    }
+
+    public void uploadFileToS3(String answerFileName) {
+        Path filePath = Paths.get(answerFileName);
+        String key = filePath.getFileName().toString();
+
+        s3.putObject(PutObjectRequest.builder()
+                .bucket(bucketName)
+                .key(key)
+                .build(), RequestBody.fromFile(filePath));
+    }
+
+    public void SendToSQS(String sqsUrl, String fileName) {
+        SendMessageRequest send_msg_request = SendMessageRequest.builder()
+                .queueUrl(sqsUrl)
+                .messageBody(fileName)
+                .build();
+        sqs.sendMessage(send_msg_request);
+    }
+
+    public void deleteMessageFromReceiverSQS(Message message, String MassagesReceiverSQSURL) {
+        DeleteMessageRequest deleteRequest = DeleteMessageRequest.builder()
+                .queueUrl(MassagesReceiverSQSURL)
+                .receiptHandle(message.receiptHandle())
+                .build();
+        sqs.deleteMessage(deleteRequest);
     }
 }

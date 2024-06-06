@@ -1,5 +1,3 @@
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.sqs.model.*;
 
 import java.io.IOException;
@@ -26,33 +24,12 @@ public class ReceivingThread implements Runnable {
         while (true) {
             List<Message> requests = MassagesReceiverSQSMessages();
             if (requests.isEmpty()) {
-                try {
-                    Thread.sleep(2000);
-                } catch (InterruptedException e) {
-                    System.out.println("[ERROR] " + e.getMessage());
-                }
+                sleep(2000);
             } else {
                 AtomicBoolean finishProcessRequests = new AtomicBoolean(false);
                 makeMessagesVisibilityDynamic(requests, finishProcessRequests);
-                for (Message message : requests) {
-                    Map<String, MessageAttributeValue> attributes = message.messageAttributes();
-                    String localSQSUrl = attributes.get("localSQSUrl").stringValue();
-                    String answer = message.body();
-                    String fileName = getFileName(localSQSUrl);
-                    if (fileName == null) {
-                        finishProcessRequests.set(true);
-                        break;
-                    }
-
-                    writeFile(fileName, answer, finishProcessRequests);
-
-                    processReviews(localSQSUrl, fileName, finishProcessRequests);
-
-                }
-                finishProcessRequests.set(true);
-                for (Message message : requests) {
-                    deleteMessageFromReceiverSQS(message);
-                }
+                processMessages(requests, finishProcessRequests);
+                deleteProcessedMessages(requests);
             }
             if(handleTerminationIfNeeded()) return;
         }
@@ -74,36 +51,46 @@ public class ReceivingThread implements Runnable {
         }
     }
 
+
+    /**
+     * Processes the messages received from the SQS queue.
+     *
+     * @param requests               List of messages received from the SQS queue.
+     * @param finishProcessRequests AtomicBoolean indicating whether the process should be finished.
+     */
+    private void processMessages(List<Message> requests, AtomicBoolean finishProcessRequests) {
+        for (Message message : requests) {
+            Map<String, MessageAttributeValue> attributes = message.messageAttributes();
+            String localSQSUrl = attributes.get("localSQSUrl").stringValue();
+            String answer = message.body();
+            String fileName = getFileName(localSQSUrl);
+            if (fileName == null) {
+                finishProcessRequests.set(true);
+                break;
+            }
+            writeFile(fileName, answer, finishProcessRequests);
+            processReviews(localSQSUrl, fileName, finishProcessRequests);
+        }
+        finishProcessRequests.set(true);
+    }
+
+    private void deleteProcessedMessages(List<Message> requests) {
+        for (Message message : requests) {
+            awsManager.deleteMessageFromReceiverSQS(message, MassagesReceiverSQSURL);
+        }
+    }
+
+    /**
+     * Writes content to a file.
+     *
+     * @param fileName               The name of the file.
+     * @param content                The content to be written to the file.
+     */
     private static void writeToFile(String fileName, String content) throws IOException {
         Path filePath = Paths.get(fileName);
         Files.write(filePath, content.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
     }
 
-    private void uploadFileToS3(String answerFileName) {
-        Path filePath = Paths.get(answerFileName);
-        String key = filePath.getFileName().toString();
-
-        awsManager.s3.putObject(PutObjectRequest.builder()
-                .bucket(awsManager.bucketName)
-                .key(key)
-                .build(), RequestBody.fromFile(filePath));
-    }
-
-    private void SendToSQS(String sqsUrl, String fileName) {
-        SendMessageRequest send_msg_request = SendMessageRequest.builder()
-                .queueUrl(sqsUrl)
-                .messageBody(fileName)
-                .build();
-        awsManager.sqs.sendMessage(send_msg_request);
-    }
-
-    private void deleteMessageFromReceiverSQS(Message message) {
-        DeleteMessageRequest deleteRequest = DeleteMessageRequest.builder()
-                .queueUrl(MassagesReceiverSQSURL)
-                .receiptHandle(message.receiptHandle())
-                .build();
-        awsManager.sqs.deleteMessage(deleteRequest);
-    }
 
     private void makeMessagesVisibilityDynamic(List<Message> messages, AtomicBoolean finishedWork) {
         Thread timerThread = new Thread(() -> {
@@ -203,8 +190,8 @@ public class ReceivingThread implements Runnable {
                 int numOfReviews = awsManager.MapOfReviews.get(localSQSUrl);
                 if (numOfReviews == 0) {
                     awsManager.MapOfReviews.remove(localSQSUrl);
-                    uploadFileToS3(fileName);
-                    SendToSQS(localSQSUrl, fileName);
+                    awsManager.uploadFileToS3(fileName);
+                    awsManager.SendToSQS(localSQSUrl, fileName);
                 }
             }
         } catch (Exception e) {
@@ -224,7 +211,7 @@ public class ReceivingThread implements Runnable {
                         terminateWorkers(numOfRunningWorkers);
                         awsManager.WorkersCounter.set(1);
                     }
-                    Thread.sleep(5000);
+                    sleep(5000);
                     return true;
                 }
             }
@@ -232,6 +219,14 @@ public class ReceivingThread implements Runnable {
             System.out.println("[ERROR] " + e.getMessage());
         }
         return false;
+    }
+
+    private static void sleep(int milliseconds) {
+        try {
+            Thread.sleep(milliseconds);
+        } catch (InterruptedException e) {
+            System.out.println("[ERROR] " + e.getMessage());
+        }
     }
 }
 

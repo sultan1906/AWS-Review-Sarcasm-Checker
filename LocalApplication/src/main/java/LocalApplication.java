@@ -140,24 +140,9 @@ public class LocalApplication {
             String fileName = message.body();
             processFile(fileName);
             System.out.println("OutputFile created");
-            deleteMessageFromQueue(localSQSURL, message);
+            aws.deleteMessageFromQueue(localSQSURL, message);
         }
     }
-
-    /**
-     * Deletes a specified message from the specified SQS queue.
-     *
-     * @param queueUrl The URL of the SQS queue from which to delete the message.
-     * @param message  The message to be deleted.
-     */
-    private static void deleteMessageFromQueue(String queueUrl, Message message) {
-        DeleteMessageRequest deleteRequest = DeleteMessageRequest.builder()
-                .queueUrl(queueUrl)
-                .receiptHandle(message.receiptHandle())
-                .build();
-        aws.sqs.deleteMessage(deleteRequest);
-    }
-
 
     private static void processFile(String fileName) {
         try {
