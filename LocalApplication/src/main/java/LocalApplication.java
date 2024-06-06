@@ -106,6 +106,12 @@ public class LocalApplication {
         handleMessages(messages, localSQSURL);
     }
 
+    /**
+     * Receives messages from the specified SQS queue with a wait time of 20 seconds.
+     *
+     * @param queueUrl The URL of the SQS queue from which to receive messages.
+     * @return A list of messages received from the queue.
+     */
     private static List<Message> receiveMessages(String queueUrl) {
         ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
                 .queueUrl(queueUrl)
@@ -123,6 +129,12 @@ public class LocalApplication {
         }
     }
 
+    /**
+     * Processes each message in the provided list and deletes it from the specified SQS queue.
+     *
+     * @param messages   The list of messages to be processed.
+     * @param localSQSURL The URL of the SQS queue from which the messages were received.
+     */
     private static void handleMessages(List<software.amazon.awssdk.services.sqs.model.Message> messages, String localSQSURL) {
         for (Message message : messages) {
             String fileName = message.body();
@@ -132,6 +144,12 @@ public class LocalApplication {
         }
     }
 
+    /**
+     * Deletes a specified message from the specified SQS queue.
+     *
+     * @param queueUrl The URL of the SQS queue from which to delete the message.
+     * @param message  The message to be deleted.
+     */
     private static void deleteMessageFromQueue(String queueUrl, Message message) {
         DeleteMessageRequest deleteRequest = DeleteMessageRequest.builder()
                 .queueUrl(queueUrl)
