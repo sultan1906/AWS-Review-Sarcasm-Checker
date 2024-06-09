@@ -107,6 +107,14 @@ public class ActionThread implements Runnable {
         }
     }
 
+    /**
+     * Processes the request by reading a file from the S3 bucket and processing its content.
+     *
+     * @param bucketName The name of the S3 bucket.
+     * @param fileName   The name of the file in the S3 bucket.
+     * @param sqsLocalUrl The local SQS URL for sending processed data.
+     * @return The total number of reviews processed.
+     */
     private int processRequest(String bucketName, String fileName, String sqsLocalUrl) {
         int sumOfReviews = 0;
         try {
@@ -132,6 +140,13 @@ public class ActionThread implements Runnable {
         return sumOfReviews;
     }
 
+    /**
+     * Processes a single review from a JSON line.
+     *
+     * @param jsonLine   The JSON line containing review data.
+     * @param sqsLocalUrl The local SQS URL for sending processed data.
+     * @return The number of reviews processed from the JSON line.
+     */
     private int processReview(String jsonLine, String sqsLocalUrl) {
         int counter = 0;
         JsonParser parser = new JsonParser();

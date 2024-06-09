@@ -35,6 +35,11 @@ public class ReceivingThread implements Runnable {
         }
     }
 
+    /**
+     * Receives messages from the SQS queue.
+     *
+     * @return List of messages received from the SQS queue.
+     */
     private List<Message> MassagesReceiverSQSMessages() {
         try {
             synchronized (awsManager.receivingMessagesFromWorkers) {
@@ -74,6 +79,11 @@ public class ReceivingThread implements Runnable {
         finishProcessRequests.set(true);
     }
 
+    /**
+     * Deletes the processed messages from the SQS queue.
+     *
+     * @param requests List of messages to be deleted.
+     */
     private void deleteProcessedMessages(List<Message> requests) {
         for (Message message : requests) {
             awsManager.deleteMessageFromReceiverSQS(message, MassagesReceiverSQSURL);
@@ -91,7 +101,12 @@ public class ReceivingThread implements Runnable {
         Files.write(filePath, content.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
     }
 
-
+    /**
+     * Makes the visibility timeout of messages dynamic based on processing status.
+     *
+     * @param messages      List of messages being processed.
+     * @param finishedWork  AtomicBoolean indicating whether the work is finished.
+     */
     private void makeMessagesVisibilityDynamic(List<Message> messages, AtomicBoolean finishedWork) {
         Thread timerThread = new Thread(() -> {
             Timer timer = new Timer();
@@ -113,6 +128,11 @@ public class ReceivingThread implements Runnable {
         timerThread.start();
     }
 
+    /**
+     * Changes the visibility timeout of a message in the SQS queue.
+     *
+     * @param receiptHandle The receipt handle of the message to change visibility for.
+     */
     public void changeMessageVisibilityRequest(String receiptHandle) {
         awsManager.sqs.changeMessageVisibility(ChangeMessageVisibilityRequest.builder()
                 .queueUrl(MassagesReceiverSQSURL)
@@ -121,6 +141,11 @@ public class ReceivingThread implements Runnable {
                 .build());
     }
 
+    /**
+     * Terminates worker instances.
+     *
+     * @param numOfWorkers The number of workers to terminate.
+     */
     private void terminateWorkers(int numOfWorkers) {
         for (int i = 0; i < numOfWorkers; i++) // Send Terminate message to all activate workers
             sendTerminateMessageToWorkers();
@@ -152,7 +177,7 @@ public class ReceivingThread implements Runnable {
                 }
             }
         } catch (Exception e) {
-            return null; // Or any default value you prefer
+            return null;
         }
     }
 
