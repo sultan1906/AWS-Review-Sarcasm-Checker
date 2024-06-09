@@ -212,8 +212,7 @@ public class ReceivingThread implements Runnable {
         try {
             synchronized (awsManager.NumOfReviewsLock) {
                 awsManager.MapOfReviews.replace(localSQSUrl, awsManager.MapOfReviews.get(localSQSUrl) - 1);
-                int numOfReviews = awsManager.MapOfReviews.get(localSQSUrl);
-                if (numOfReviews == 0) {
+                if (awsManager.MapOfReviews.get(localSQSUrl) == 0) {
                     awsManager.MapOfReviews.remove(localSQSUrl);
                     awsManager.uploadFileToS3(fileName);
                     awsManager.SendToSQS(localSQSUrl, fileName);
